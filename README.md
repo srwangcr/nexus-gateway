@@ -79,7 +79,7 @@ nexus-gateway/
 |------------|--------|-------------|
 | Estructura base | ✅ Completado | Carpetas y archivos creados |
 | Pseudocódigo | ✅ Completado | Lógica documentada en cada archivo |
-| `redis.service.ts` | 🔄 En progreso | Implementación del cliente Redis |
+| `redis.service.ts` | ✅ Completado | Implementación del cliente Redis |
 | `auth.middleware.ts` | ⏳ Pendiente | Por implementar |
 | `rate-limit.middleware.ts` | ⏳ Pendiente | Por implementar |
 | `reverse-proxy.ts` | ⏳ Pendiente | Por implementar |
