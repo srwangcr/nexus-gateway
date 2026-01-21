@@ -1,33 +1,3 @@
-// =========================================
-// CONFIGURACIÓN DEL GATEWAY - gateway.ts
-// =========================================
-
-// INTERFAZ: RouteConfig
-//   path: string - ruta del endpoint
-//   target: string - URL del servicio destino
-//   methods: array de strings - métodos HTTP permitidos
-//   requiresAuth: boolean - si requiere autenticación
-//   rateLimit: objeto con configuración de límite
-
-// INTERFAZ: GatewayConfig
-//   port: number - puerto del gateway
-//   routes: array de RouteConfig
-//   timeout: number - timeout de requests
-//   retries: number - reintentos en caso de fallo
-
-// CONSTANTE: gatewayConfig
-//   LEER: variables de entorno
-//   DEFINIR: puerto (default: 3000)
-//   DEFINIR: timeout (default: 30000)
-//   DEFINIR: retries (default: 3)
-//   DEFINIR: array de rutas con sus configuraciones
-//     EJEMPLO: /api/users -> http://users-service:3001
-//     EJEMPLO: /api/products -> http://products-service:3002
-//     EJEMPLO: /api/orders -> http://orders-service:3003
-
-// EXPORTAR: gatewayConfig
-
-
 interface RouteConfig { // create a interface routing configuration
     
     path: String; // Endpoint path
@@ -40,49 +10,49 @@ interface RouteConfig { // create a interface routing configuration
     };
 }
 
-interface GatewayConfig {
-    port: number;
-    routes: RouteConfig[];
-    timeout:number;
-    retries: number;
+interface GatewayConfig { // create a interface gateway configuration
+    port: number; // Gateway listening port
+    routes: RouteConfig[]; // Array of route configurations
+    timeout:number; // Request timeout in milliseconds
+    retries: number; // Number of retry attempts for failed requests
 }
 
-const gatewayConfig: GatewayConfig = {
-    port: Number(process.env.GATEWAY_PORT) ?? 3000,
-    timeout: Number(process.env.GATEWAY_TIMEOUT) ?? 30000,
-    retries: Number(process.env.GATEWAY_RETRIES) ?? 3,
-    routes: [
+const gatewayConfig: GatewayConfig = { // create a gateway configuration object
+    port: Number(process.env.GATEWAY_PORT) ?? 3000, // Default to port 3000 if not specified
+    timeout: Number(process.env.GATEWAY_TIMEOUT) ?? 30000, // Default to 30 seconds
+    retries: Number(process.env.GATEWAY_RETRIES) ?? 3, // Default to 3 retries
+    routes: [ // Define route configurations
         {
-            path: '/api/users',
-            target: 'http://users-service:3001',
-            methods: ['GET', 'POST', 'PUT', 'DELETE'],
-            requiresAuth: true,
-            rateLimit: {
-                windowMs: 60000,
-                maxRequests: 100,
+            path: '/api/users', // Users service endpoint
+            target: 'http://users-service:3001', // Target URL for users service
+            methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+            requiresAuth: true,// Authentication required
+            rateLimit: { // Rate limiting configuration
+                windowMs: 60000, // 1 minute window
+                maxRequests: 100, // Max 100 requests per window
+            }, 
+        },
+        {
+            path: '/api/products', // Products service endpoint
+            target: 'http://products-service:3002', // Target URL for products service
+            methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+            requiresAuth: true, // Authentication required
+            rateLimit: { // Rate limiting configuration
+                windowMs: 60000, // 1 minute window
+                maxRequests: 100, // Max 100 requests per window
             },
         },
         {
-            path: '/api/products',
-            target: 'http://products-service:3002',
-            methods: ['GET', 'POST', 'PUT', 'DELETE'],
-            requiresAuth: true,
+            path: '/api/orders', // Orders service endpoint
+            target: 'http://orders-service:3003', // Target URL for orders service
+            methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed HTTP methods
+            requiresAuth: true, // Authentication required
             rateLimit: {
-                windowMs: 60000,
-                maxRequests: 100,
-            },
-        },
-        {
-            path: '/api/orders',
-            target: 'http://orders-service:3003',
-            methods: ['GET', 'POST', 'PUT', 'DELETE'],
-            requiresAuth: true,
-            rateLimit: {
-                windowMs: 60000,
-                maxRequests: 100,
+                windowMs: 60000, // 1 minute window
+                maxRequests: 100, // Max 100 requests per window
             },
         },
     ],
 };
 
-export default gatewayConfig;
+export default gatewayConfig; // export the gateway configuration object
