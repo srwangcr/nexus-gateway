@@ -26,3 +26,63 @@
 //     EJEMPLO: /api/orders -> http://orders-service:3003
 
 // EXPORTAR: gatewayConfig
+
+
+interface RouteConfig { // create a interface routing configuration
+    
+    path: String; // Endpoint path
+    target: String; // Endpount target URL
+    methods : String[]; // Allowed HTTP methods
+    requiresAuth: Boolean;
+    rateLimit: {
+        windowMs: Number; // Time window in milliseconds
+        maxRequests: Number; // Max requests per window
+    };
+}
+
+interface GatewayConfig {
+    port: number;
+    routes: RouteConfig[];
+    timeout:number;
+    retries: number;
+}
+
+const gatewayConfig: GatewayConfig = {
+    port: Number(process.env.GATEWAY_PORT) ?? 3000,
+    timeout: Number(process.env.GATEWAY_TIMEOUT) ?? 30000,
+    retries: Number(process.env.GATEWAY_RETRIES) ?? 3,
+    routes: [
+        {
+            path: '/api/users',
+            target: 'http://users-service:3001',
+            methods: ['GET', 'POST', 'PUT', 'DELETE'],
+            requiresAuth: true,
+            rateLimit: {
+                windowMs: 60000,
+                maxRequests: 100,
+            },
+        },
+        {
+            path: '/api/products',
+            target: 'http://products-service:3002',
+            methods: ['GET', 'POST', 'PUT', 'DELETE'],
+            requiresAuth: true,
+            rateLimit: {
+                windowMs: 60000,
+                maxRequests: 100,
+            },
+        },
+        {
+            path: '/api/orders',
+            target: 'http://orders-service:3003',
+            methods: ['GET', 'POST', 'PUT', 'DELETE'],
+            requiresAuth: true,
+            rateLimit: {
+                windowMs: 60000,
+                maxRequests: 100,
+            },
+        },
+    ],
+};
+
+export default gatewayConfig;
