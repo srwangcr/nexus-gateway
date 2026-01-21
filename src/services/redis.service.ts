@@ -6,18 +6,27 @@ interface RedisConfig {
     db?: number;
 }
 
+interface Logger {
+    log: (message: string, ...args: unknown[]) => void;
+    error: (message: string, ...args: unknown[]) => void;
+    warn: (message: string, ...args: unknown[]) => void;
+}
 
 class RedisService {
     private client: Redis | null;
     private config: RedisConfig;
-    private isConnected: boolean
+    private isConnected: boolean;
     private reconnectAttempts: number;
+    private logger: Console;
 
-    constructor(config: RedisConfig) {
+
+
+    constructor(config: RedisConfig, logger?: Console) {
         this.config = config;
         this.client = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
+        this.logger = logger || console;
     }
 
     private ensureConnected(): void {
@@ -27,7 +36,7 @@ class RedisService {
     }
 
     private handleError(operation: string, error: unknown): never {
-        console.error(`Error ${operation}:`, error);
+        this.logger.error(`Error ${operation}:`, error);
         throw error;
     }
 
@@ -38,37 +47,38 @@ class RedisService {
                 port: this.config.port,
                 password: this.config.password,
                 db: this.config.db,
+                lazyConnect: true,
             });
 
             this.client.on('connect', () => {
-                console.log('Redis connected');
+                this.logger.log('Redis connected');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
             });
-
+            
             this.client.on('error', (err) => {
-                console.error('Redis connection error:', err);
+                this.logger.error('Redis connection error:', err);
                 this.isConnected = false;
             });
 
             this.client.on('close', () => {
-                console.warn('Redis connection closed');
+                this.logger.warn('Redis connection closed');
                 this.isConnected = false;
             });
 
             this.client.on('reconnecting', () => {
                 this.reconnectAttempts += 1;
-                console.log(`Redis reconnecting (attempt ${this.reconnectAttempts})`);
+                this.logger.log(`Redis reconnecting (attempt ${this.reconnectAttempts})`);
             });
 
             this.client.on('ready', () => {
-                console.log('Redis is ready to use');
+                this.logger.log('Redis is ready to use');
             });
 
-            await this.client.connect();
-            console.log('Redis connection established');
+            await this.client.connect(); 
+            this.logger.log('Redis connection established');
         } catch (error) {
-            console.error('Failed to connect to Redis:', error);
+            this.logger.error('Failed to connect to Redis:', error);
             throw error;
         }
     }
@@ -78,20 +88,28 @@ class RedisService {
             await this.client.quit();
             this.client = null;
             this.isConnected = false;
-            console.log('Redis disconnected');
+            this.logger.log('Redis disconnected');
+        }
+    }
+
+    private validateKey(key: string): void {
+        if (!key || key.trim() === '') {
+            throw new Error('Key cannot be empty');
         }
     }
 
     public async get(key: string): Promise<string | null> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.get(key);
+            return await this.client!.get(key);
         } catch (error) {
             this.handleError('getting key from Redis', error);
         }
     }
 
     public async set(key: string, value: string, expirationSeconds?: number): Promise<void> {
+        this.validateKey(key);  // ✅ Agregar
         this.ensureConnected();
         try {
             if (expirationSeconds) {
@@ -105,6 +123,7 @@ class RedisService {
     }
 
     public async increment(key: string): Promise<number> {
+        this.validateKey(key);  
         this.ensureConnected();
         try {
             return await this.client.incr(key);
@@ -114,15 +133,17 @@ class RedisService {
     }
 
     public async decrement(key: string): Promise<number> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.decr(key);
+            return await this.client!.decr(key);
         } catch (error) {
             this.handleError('decrementing key in Redis', error);
         }
     }
 
     public async delete(key: string): Promise<number> {
+        this.validateKey(key); 
         this.ensureConnected();
         try {
             return await this.client.del(key);
@@ -132,6 +153,7 @@ class RedisService {
     }
 
     public async exists(key: string): Promise<boolean> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
             const result = await this.client.exists(key);
@@ -142,6 +164,7 @@ class RedisService {
     }
 
     public async expire(key: string, seconds: number): Promise<boolean> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
             const result = await this.client.expire(key, seconds);
@@ -152,6 +175,7 @@ class RedisService {
     }
 
     public async ttl(key: string): Promise<number> {
+        this.validateKey(key); 
         this.ensureConnected();
         try {
             return await this.client.ttl(key);
@@ -161,18 +185,20 @@ class RedisService {
     }   
 
     public async getHash(key: string, field: string): Promise<string | null> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client!.hget(key, field);
+            return await this.client.hget(key, field);
         } catch (error) {
             this.handleError('getting hash field from Redis', error);
         }
     }
 
     public async setHash(key: string, field: string, value: string): Promise<void> {
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            await this.client!.hset(key, field, value);
+            await this.client.hset(key, field, value);
         } catch (error) {
             this.handleError('setting hash field in Redis', error);
         }
@@ -199,11 +225,10 @@ function getRedisService(config?: RedisConfig): RedisService {
     }
     return redisServiceInstance;
 }
-
-export { RedisService, getRedisService };
-
-
-
-
-
-
+function resetRedisService(): void {
+    if (redisServiceInstance) {
+        redisServiceInstance.disconnect();
+    }
+    redisServiceInstance = null;
+}
+export { RedisService, getRedisService, resetRedisService };
