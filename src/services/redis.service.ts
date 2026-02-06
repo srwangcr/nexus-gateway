@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 interface RedisConfig {
     host: string;
     port: number;
@@ -56,7 +56,7 @@ class RedisService {
                 this.reconnectAttempts = 0;
             });
             
-            this.client.on('error', (err) => {
+            this.client.on('error', (err: unknown) => {
                 this.logger.error('Redis connection error:', err);
                 this.isConnected = false;
             });
@@ -109,13 +109,13 @@ class RedisService {
     }
 
     public async set(key: string, value: string, expirationSeconds?: number): Promise<void> {
-        this.validateKey(key);  // ✅ Agregar
+        this.validateKey(key);
         this.ensureConnected();
         try {
             if (expirationSeconds) {
-                await this.client.set(key, value, 'EX', expirationSeconds);
+                await this.client!.set(key, value, 'EX', expirationSeconds);
             } else {
-                await this.client.set(key, value);
+                await this.client!.set(key, value);
             }
         } catch (error) {
             this.handleError('setting key in Redis', error);
@@ -123,10 +123,10 @@ class RedisService {
     }
 
     public async increment(key: string): Promise<number> {
-        this.validateKey(key);  
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.incr(key);
+            return await this.client!.incr(key);
         } catch (error) {
             this.handleError('incrementing key in Redis', error);
         }
@@ -143,10 +143,10 @@ class RedisService {
     }
 
     public async delete(key: string): Promise<number> {
-        this.validateKey(key); 
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.del(key);
+            return await this.client!.del(key);
         } catch (error) {
             this.handleError('deleting key from Redis', error);
         }
@@ -156,7 +156,7 @@ class RedisService {
         this.validateKey(key);
         this.ensureConnected();
         try {
-            const result = await this.client.exists(key);
+            const result = await this.client!.exists(key);
             return result === 1;
         } catch (error) {
             this.handleError('checking existence of key in Redis', error);
@@ -167,7 +167,7 @@ class RedisService {
         this.validateKey(key);
         this.ensureConnected();
         try {
-            const result = await this.client.expire(key, seconds);
+            const result = await this.client!.expire(key, seconds);
             return result === 1;
         } catch (error) {
             this.handleError('setting expiration for key in Redis', error);
@@ -175,10 +175,10 @@ class RedisService {
     }
 
     public async ttl(key: string): Promise<number> {
-        this.validateKey(key); 
+        this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.ttl(key);
+            return await this.client!.ttl(key);
         } catch (error) {
             this.handleError('getting TTL for key in Redis', error);
         }
@@ -188,7 +188,7 @@ class RedisService {
         this.validateKey(key);
         this.ensureConnected();
         try {
-            return await this.client.hget(key, field);
+            return await this.client!.hget(key, field);
         } catch (error) {
             this.handleError('getting hash field from Redis', error);
         }
@@ -198,7 +198,7 @@ class RedisService {
         this.validateKey(key);
         this.ensureConnected();
         try {
-            await this.client.hset(key, field, value);
+            await this.client!.hset(key, field, value);
         } catch (error) {
             this.handleError('setting hash field in Redis', error);
         }
@@ -207,7 +207,7 @@ class RedisService {
     public async ping(): Promise<string> {
         this.ensureConnected();
         try {
-            return await this.client.ping();
+            return await this.client!.ping();
         } catch (error) {
             this.handleError('pinging Redis', error);
         }

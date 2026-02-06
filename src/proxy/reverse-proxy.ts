@@ -1,126 +1,267 @@
-// ===========================================
-// REVERSE PROXY - reverse-proxy.ts
-// ===========================================
+import type { NextFunction, Request, Response } from 'express';
+import { Router } from 'express';
+import httpProxy from 'http-proxy';
+import type { IncomingMessage } from 'http';
 
-// IMPORTAR: http-proxy, gateway config, interfaces
+import gatewayConfig, { type GatewayConfig, type RouteConfig } from '../config/gateway.js';
+import type { AuthenticatedRequest } from '../core/interfaces/request.interface.js';
+import { calculateExponentialBackoff } from '../core/algorithms/rate-limit.logic.js';
 
-// CLASE: ReverseProxy
-//   PROPIEDADES:
-//     proxy: instancia de http-proxy
-//     config: configuración del gateway
-//     routeMap: Map de rutas a configuraciones
-//   
-//   CONSTRUCTOR(config):
-//     CREAR: instancia de http-proxy
-//     CONFIGURAR: opciones del proxy
-//       - changeOrigin: true
-//       - proxyTimeout: desde config
-//       - timeout: desde config
-//     INICIALIZAR: routeMap desde config
-//   
-//   MÉTODO: encontrarRuta(path: string): RouteConfig | null
-//     PARA cada ruta en routeMap:
-//       SI path coincide con patrón de ruta:
-//         RETORNAR: configuración de la ruta
-//     RETORNAR: null
-//   
-//   MÉTODO: validarMetodo(metodo: string, rutaConfig): boolean
-//     SI rutaConfig permite todos los métodos:
-//       RETORNAR: true
-//     SI método está en lista de métodos permitidos:
-//       RETORNAR: true
-//     RETORNAR: false
-//   
-//   MÉTODO: construirTargetUrl(rutaConfig, req): string
-//     OBTENER: target base de rutaConfig
-//     OBTENER: path restante después del prefix
-//     CONSTRUIR: URL completa
-//     AGREGAR: query params si existen
-//     RETORNAR: URL completa
-//   
-//   MÉTODO: agregarHeadersProxy(req, headers)
-//     AGREGAR: X-Forwarded-For
-//     AGREGAR: X-Forwarded-Proto
-//     AGREGAR: X-Forwarded-Host
-//     AGREGAR: X-Request-Id
-//     SI hay usuario autenticado:
-//       AGREGAR: X-User-Id
-//       AGREGAR: X-User-Role
-//     RETORNAR: headers modificados
-//   
-//   MÉTODO: manejarErrorProxy(error, req, res)
-//     REGISTRAR: error del proxy
-//     
-//     SI error es ECONNREFUSED:
-//       RESPONDER: 503 Service Unavailable
-//       MENSAJE: "Servicio no disponible"
-//     SI error es ETIMEDOUT:
-//       RESPONDER: 504 Gateway Timeout
-//       MENSAJE: "Timeout al conectar con el servicio"
-//     SI error es ECONNRESET:
-//       RESPONDER: 502 Bad Gateway
-//       MENSAJE: "Conexión interrumpida con el servicio"
-//     POR_DEFECTO:
-//       RESPONDER: 500 Internal Server Error
-//       MENSAJE: "Error en el proxy"
-//   
-//   MÉTODO: manejarRespuestaProxy(proxyRes, req, res)
-//     AGREGAR: headers de respuesta
-//       - X-Proxied-By: "Nexus Gateway"
-//       - X-Response-Time
-//     
-//     REGISTRAR: información del request proxied
-//       - método, ruta, target
-//       - código de respuesta
-//       - tiempo de respuesta
+const RESPONSE_TIME_KEY = Symbol('proxyStartTime');
 
-// MIDDLEWARE: proxyMiddleware(req, res, next)
-//   CREAR: instancia de ReverseProxy
-//   
-//   ENCONTRAR: configuración de ruta para el request
-//   
-//   SI no se encuentra ruta:
-//     LLAMAR: next() // dejará que notFoundHandler lo maneje
-//     TERMINAR
-//   
-//   VALIDAR: método HTTP
-//   SI método no permitido:
-//     RESPONDER: 405 Method Not Allowed
-//     AGREGAR: header Allow con métodos permitidos
-//     TERMINAR
-//   
-//   CONSTRUIR: URL de destino
-//   
-//   AGREGAR: headers del proxy
-//   
-//   CONFIGURAR: opciones del proxy
-//     - target: URL de destino
-//     - headers: headers modificados
-//     - timeout: desde configuración
-//   
-//   REGISTRAR: inicio del proxy
-//   GUARDAR: timestamp de inicio
-//   
-//   INTENTAR:
-//     PROXEAR: request con reintentos
-//     PARA intento de 1 a maxRetries:
-//       INTENTAR:
-//         PROXEAR: request
-//         SI exitoso:
-//           SALIR del loop
-//       CAPTURAR_ERROR:
-//         SI es último intento:
-//           LANZAR: error
-//         SINO:
-//           ESPERAR: backoff exponencial
-//           CONTINUAR: con siguiente intento
-//   
-//   CAPTURAR_ERROR:
-//     MANEJAR: error del proxy
+class ReverseProxy {
+	public proxy: httpProxy;
+	public config: GatewayConfig;
+	public routeMap: Map<string, RouteConfig>;
 
-// FUNCIÓN: crearProxyRouter(gatewayConfig)
-//   CREAR: router de Express
-//   APLICAR: proxyMiddleware a todas las rutas
-//   RETORNAR: router
+	constructor(config: GatewayConfig) {
+		this.config = config;
+		this.proxy = httpProxy.createProxyServer({
+			changeOrigin: true,
+			proxyTimeout: config.timeout,
+			timeout: config.timeout,
+		});
+		this.routeMap = new Map(config.routes.map((route) => [route.path, route]));
 
-// EXPORTAR: ReverseProxy, proxyMiddleware, crearProxyRouter
+		this.proxy.on('error', (error, req, res) => {
+			this.manejarErrorProxy(error, req as Request, res as Response);
+		});
+
+		this.proxy.on('proxyRes', (proxyRes, req, res) => {
+			this.manejarRespuestaProxy(proxyRes, req as Request, res as Response);
+		});
+	}
+
+	public encontrarRuta(path: string): RouteConfig | null {
+		for (const [routePath, routeConfig] of Array.from(this.routeMap.entries())) {
+			if (routePath.includes('*')) {
+				const pattern = new RegExp(`^${routePath.replace(/\*/g, '.*')}`);
+				if (pattern.test(path)) {
+					return routeConfig;
+				}
+			}
+			if (path.startsWith(routePath)) {
+				return routeConfig;
+			}
+		}
+		return null;
+	}
+
+	public validarMetodo(metodo: string, rutaConfig: RouteConfig): boolean {
+		const normalized = metodo.toUpperCase();
+		if (rutaConfig.methods.some((method) => method === '*')) {
+			return true;
+		}
+		return rutaConfig.methods.map((method) => method.toUpperCase()).includes(normalized);
+	}
+
+	public construirTargetUrl(rutaConfig: RouteConfig, req: Request): string {
+		const baseTarget = new URL(rutaConfig.target);
+		const requestPath = req.originalUrl || req.url;
+		const [pathPart, queryPart] = requestPath.split('?');
+		const remainingPath = pathPart.replace(rutaConfig.path, '') || '/';
+
+		baseTarget.pathname = `${baseTarget.pathname.replace(/\/$/, '')}${remainingPath.startsWith('/') ? '' : '/'}${remainingPath}`;
+		if (queryPart) {
+			baseTarget.search = queryPart;
+		}
+		return baseTarget.toString();
+	}
+
+	public agregarHeadersProxy(req: Request, headers: Record<string, string>): Record<string, string> {
+		const request = req as AuthenticatedRequest;
+		const forwardedFor = req.headers['x-forwarded-for'];
+		const clientIp = request.clientIp || req.ip;
+		const forwardedValue = typeof forwardedFor === 'string' ? forwardedFor : '';
+
+		headers['x-forwarded-for'] = forwardedValue
+			? `${forwardedValue}, ${clientIp}`
+			: clientIp || '';
+		headers['x-forwarded-proto'] = req.protocol;
+		headers['x-forwarded-host'] = req.headers.host ?? '';
+		if (request.requestId) {
+			headers['x-request-id'] = request.requestId;
+		}
+		if (request.user) {
+			headers['x-user-id'] = request.user.id;
+			headers['x-user-role'] = request.user.role;
+		}
+		return headers;
+	}
+
+	public manejarErrorProxy(error: NodeJS.ErrnoException, _req: Request, res: Response): void {
+		console.error('Proxy error:', error);
+
+		if (res.headersSent) {
+			return;
+		}
+
+		if (error.code === 'ECONNREFUSED') {
+			res.status(503).json({ message: 'Servicio no disponible' });
+			return;
+		}
+		if (error.code === 'ETIMEDOUT') {
+			res.status(504).json({ message: 'Timeout al conectar con el servicio' });
+			return;
+		}
+		if (error.code === 'ECONNRESET') {
+			res.status(502).json({ message: 'Conexion interrumpida con el servicio' });
+			return;
+		}
+		res.status(500).json({ message: 'Error en el proxy' });
+	}
+
+	public manejarRespuestaProxy(
+		proxyRes: IncomingMessage,
+		req: Request,
+		res: Response,
+	): void {
+		res.setHeader('X-Proxied-By', 'Nexus Gateway');
+
+		const startTime = (req as { [RESPONSE_TIME_KEY]?: number })[RESPONSE_TIME_KEY];
+		if (startTime) {
+			const responseTimeMs = Date.now() - startTime;
+			res.setHeader('X-Response-Time', `${responseTimeMs}ms`);
+		}
+
+		const target = (req as { proxyTarget?: string }).proxyTarget ?? 'unknown';
+		console.log(
+			`Proxy ${req.method} ${req.originalUrl} -> ${target} ${proxyRes.statusCode ?? ''}`,
+		);
+	}
+}
+
+const defaultProxy = new ReverseProxy(gatewayConfig);
+
+async function proxyMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
+	const routeConfig = defaultProxy.encontrarRuta(req.path);
+	if (!routeConfig) {
+		next();
+		return;
+	}
+
+	if (!defaultProxy.validarMetodo(req.method, routeConfig)) {
+		res.setHeader('Allow', routeConfig.methods.join(', '));
+		res.status(405).json({ message: 'Method Not Allowed' });
+		return;
+	}
+
+	const request = req as AuthenticatedRequest;
+	if (routeConfig.requiresAuth && !request.user) {
+		res.status(401).json({ message: 'Token de autenticacion requerido' });
+		return;
+	}
+
+	const targetUrl = defaultProxy.construirTargetUrl(routeConfig, req);
+	(req as { proxyTarget?: string }).proxyTarget = targetUrl;
+
+	const headers = defaultProxy.agregarHeadersProxy(req, {
+		...(req.headers as Record<string, string>),
+	});
+
+	const options: httpProxy.ServerOptions = {
+		target: targetUrl,
+		headers,
+		timeout: defaultProxy.config.timeout,
+		proxyTimeout: defaultProxy.config.timeout,
+		changeOrigin: true,
+	};
+
+	(req as { [RESPONSE_TIME_KEY]?: number })[RESPONSE_TIME_KEY] = Date.now();
+
+	const maxRetries = defaultProxy.config.retries;
+	for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+		try {
+			await new Promise<void>((resolve, reject) => {
+				defaultProxy.proxy.web(req, res, options, (error) => {
+					reject(error);
+				});
+
+				res.once('finish', () => resolve());
+				res.once('close', () => resolve());
+			});
+			return;
+		} catch (error) {
+			if (res.headersSent) {
+				return;
+			}
+			if (attempt >= maxRetries) {
+				defaultProxy.manejarErrorProxy(error as NodeJS.ErrnoException, req, res);
+				return;
+			}
+			const waitMs = calculateExponentialBackoff(attempt);
+			await new Promise((resolve) => setTimeout(resolve, waitMs));
+		}
+	}
+}
+
+function crearProxyRouter(config: GatewayConfig): Router {
+	const proxyInstance = new ReverseProxy(config);
+	const router = Router();
+
+	router.use(async (req, res, next) => {
+		const routeConfig = proxyInstance.encontrarRuta(req.path);
+		if (!routeConfig) {
+			next();
+			return;
+		}
+
+		if (!proxyInstance.validarMetodo(req.method, routeConfig)) {
+			res.setHeader('Allow', routeConfig.methods.join(', '));
+			res.status(405).json({ message: 'Method Not Allowed' });
+			return;
+		}
+
+		const request = req as AuthenticatedRequest;
+		if (routeConfig.requiresAuth && !request.user) {
+			res.status(401).json({ message: 'Token de autenticacion requerido' });
+			return;
+		}
+
+		const targetUrl = proxyInstance.construirTargetUrl(routeConfig, req);
+		(req as { proxyTarget?: string }).proxyTarget = targetUrl;
+
+		const headers = proxyInstance.agregarHeadersProxy(req, {
+			...(req.headers as Record<string, string>),
+		});
+
+		const options: httpProxy.ServerOptions = {
+			target: targetUrl,
+			headers,
+			timeout: proxyInstance.config.timeout,
+			proxyTimeout: proxyInstance.config.timeout,
+			changeOrigin: true,
+		};
+
+		(req as { [RESPONSE_TIME_KEY]?: number })[RESPONSE_TIME_KEY] = Date.now();
+
+		const maxRetries = proxyInstance.config.retries;
+		for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+			try {
+				await new Promise<void>((resolve, reject) => {
+					proxyInstance.proxy.web(req, res, options, (error) => {
+						reject(error);
+					});
+
+					res.once('finish', () => resolve());
+					res.once('close', () => resolve());
+				});
+				return;
+			} catch (error) {
+				if (res.headersSent) {
+					return;
+				}
+				if (attempt >= maxRetries) {
+					proxyInstance.manejarErrorProxy(error as NodeJS.ErrnoException, req, res);
+					return;
+				}
+				const waitMs = calculateExponentialBackoff(attempt);
+				await new Promise((resolve) => setTimeout(resolve, waitMs));
+			}
+		}
+	});
+
+	return router;
+}
+
+export { ReverseProxy, proxyMiddleware, crearProxyRouter };

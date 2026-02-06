@@ -1,71 +1,114 @@
-// ================================================
-// MIDDLEWARE DE AUTENTICACIÓN - auth.middleware.ts
-// ================================================
+import type { NextFunction, Request, Response } from 'express';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 
-// IMPORTAR: jwt, interfaces, configuración
+import type { AuthenticatedRequest, User } from '../core/interfaces/request.interface.js';
 
-// FUNCIÓN: extractToken(request): string | null
-//   OBTENER: header Authorization
-//   SI header existe y comienza con "Bearer ":
-//     EXTRAER: token después de "Bearer "
-//     RETORNAR: token
-//   SINO:
-//     RETORNAR: null
+const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 
-// FUNCIÓN: verifyToken(token: string): User | null
-//   INTENTAR:
-//     VERIFICAR: token con jwt.verify()
-//     EXTRAER: payload del token
-//     VALIDAR: estructura del payload
-//     RETORNAR: objeto User del payload
-//   CAPTURAR_ERROR:
-//     REGISTRAR: error de verificación
-//     RETORNAR: null
+function extractToken(request: Request): string | null {
+	const authHeader = request.headers.authorization;
+	if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+		return authHeader.slice('Bearer '.length).trim();
+	}
+	return null;
+}
 
-// MIDDLEWARE: authMiddleware(req, res, next)
-//   EXTRAER: token del request
-//   
-//   SI no hay token:
-//     RESPONDER: 401 Unauthorized
-//     MENSAJE: "Token de autenticación requerido"
-//     TERMINAR
-//   
-//   VERIFICAR: token
-//   
-//   SI token inválido:
-//     RESPONDER: 403 Forbidden
-//     MENSAJE: "Token inválido o expirado"
-//     TERMINAR
-//   
-//   ASIGNAR: información del usuario a req.user
-//   GENERAR: requestId único
-//   ASIGNAR: requestId a req.requestId
-//   OBTENER: IP del cliente
-//   ASIGNAR: IP a req.clientIp
-//   
-//   LLAMAR: next()
+function buildUserFromPayload(payload: JwtPayload): User | null {
+	const id = String(payload.sub ?? payload.id ?? '').trim();
+	const email = String(payload.email ?? '').trim();
+	const role = String(payload.role ?? '').trim();
+	const permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
 
-// MIDDLEWARE: optionalAuth(req, res, next)
-//   EXTRAER: token del request
-//   
-//   SI hay token:
-//     VERIFICAR: token
-//     SI token válido:
-//       ASIGNAR: usuario a req.user
-//   
-//   LLAMAR: next()
+	if (!id || !email || !role) {
+		return null;
+	}
 
-// FUNCIÓN: checkPermission(permission: string)
-//   RETORNAR: middleware function(req, res, next)
-//     SI no hay usuario autenticado:
-//       RESPONDER: 401 Unauthorized
-//       TERMINAR
-//     
-//     SI usuario no tiene el permiso:
-//       RESPONDER: 403 Forbidden
-//       MENSAJE: "Permisos insuficientes"
-//       TERMINAR
-//     
-//     LLAMAR: next()
+	return {
+		id,
+		email,
+		role,
+		permissions,
+	};
+}
 
-// EXPORTAR: authMiddleware, optionalAuth, checkPermission
+function verifyToken(token: string): User | null {
+	try {
+		const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+		return buildUserFromPayload(payload);
+	} catch (error) {
+		console.warn('Token verification failed:', error);
+		return null;
+	}
+}
+
+function getClientIp(request: Request): string {
+	const forwarded = request.headers['x-forwarded-for'];
+	if (typeof forwarded === 'string' && forwarded.trim() !== '') {
+		return forwarded.split(',')[0].trim();
+	}
+	return request.ip || request.socket?.remoteAddress || 'unknown';
+}
+
+function ensureRequestContext(request: AuthenticatedRequest): void {
+	if (!request.requestId) {
+		request.requestId = uuidv4();
+	}
+	if (!request.clientIp) {
+		request.clientIp = getClientIp(request);
+	}
+}
+
+function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+	const token = extractToken(req);
+	if (!token) {
+		res.status(401).json({ message: 'Token de autenticacion requerido' });
+		return;
+	}
+
+	const user = verifyToken(token);
+	if (!user) {
+		res.status(403).json({ message: 'Token invalido o expirado' });
+		return;
+	}
+
+	const authenticatedRequest = req as AuthenticatedRequest;
+	authenticatedRequest.user = user;
+	ensureRequestContext(authenticatedRequest);
+	next();
+}
+
+function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+	const token = extractToken(req);
+	const authenticatedRequest = req as AuthenticatedRequest;
+
+	if (token) {
+		const user = verifyToken(token);
+		if (user) {
+			authenticatedRequest.user = user;
+		}
+	}
+
+	ensureRequestContext(authenticatedRequest);
+	next();
+}
+
+function checkPermission(permission: string) {
+	return (req: Request, res: Response, next: NextFunction): void => {
+		const authenticatedRequest = req as AuthenticatedRequest;
+		if (!authenticatedRequest.user) {
+			res.status(401).json({ message: 'Token de autenticacion requerido' });
+			return;
+		}
+
+		const { permissions } = authenticatedRequest.user;
+		if (!permissions.includes(permission)) {
+			res.status(403).json({ message: 'Permisos insuficientes' });
+			return;
+		}
+
+		next();
+	};
+}
+
+export { authMiddleware, optionalAuth, checkPermission, extractToken, verifyToken };

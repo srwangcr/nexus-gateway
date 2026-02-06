@@ -1,92 +1,134 @@
-// ================================================
-// MIDDLEWARE DE MANEJO DE ERRORES - error.handler.ts
-// ================================================
+import type { NextFunction, Request, Response } from 'express';
 
-// CLASE: AppError extends Error
-//   PROPIEDADES:
-//     statusCode: number - código HTTP del error
-//     isOperational: boolean - si es error operacional o programático
-//     details?: any - detalles adicionales del error
-//   
-//   CONSTRUCTOR(message, statusCode, isOperational = true, details?):
-//     LLAMAR: super(message)
-//     ASIGNAR: propiedades
-//     CAPTURAR: stack trace
+import type { AuthenticatedRequest } from '../core/interfaces/request.interface.js';
 
-// FUNCIÓN: determinarCodigoEstado(error): number
-//   SI error tiene statusCode:
-//     RETORNAR: error.statusCode
-//   SI error es de validación:
-//     RETORNAR: 400
-//   SI error es de autenticación:
-//     RETORNAR: 401
-//   SI error es de autorización:
-//     RETORNAR: 403
-//   SI error es de recurso no encontrado:
-//     RETORNAR: 404
-//   SI error es de timeout:
-//     RETORNAR: 504
-//   POR_DEFECTO:
-//     RETORNAR: 500
+class AppError extends Error {
+	public statusCode: number;
+	public isOperational: boolean;
+	public details?: unknown;
 
-// FUNCIÓN: esErrorOperacional(error): boolean
-//   SI error tiene propiedad isOperational:
-//     RETORNAR: error.isOperational
-//   SINO:
-//     RETORNAR: false
+	constructor(message: string, statusCode: number, isOperational = true, details?: unknown) {
+		super(message);
+		this.statusCode = statusCode;
+		this.isOperational = isOperational;
+		this.details = details;
+		Error.captureStackTrace(this, this.constructor);
+	}
+}
 
-// FUNCIÓN: registrarError(error, req)
-//   CREAR: objeto de log con:
-//     - timestamp
-//     - requestId (si existe)
-//     - método HTTP
-//     - ruta
-//     - usuario (si está autenticado)
-//     - mensaje de error
-//     - stack trace
-//     - headers relevantes
-//   
-//   SI es error operacional:
-//     REGISTRAR: como WARNING
-//   SINO:
-//     REGISTRAR: como ERROR
+function determinarCodigoEstado(error: unknown): number {
+	if (error instanceof AppError && typeof error.statusCode === 'number') {
+		return error.statusCode;
+	}
 
-// MIDDLEWARE: errorHandler(error, req, res, next)
-//   REGISTRAR: error con contexto
-//   
-//   DETERMINAR: código de estado
-//   
-//   CREAR: respuesta de error
-//     SI entorno es desarrollo:
-//       INCLUIR: stack trace y detalles completos
-//     SI entorno es producción:
-//       SI es error operacional:
-//         INCLUIR: mensaje del error
-//       SINO:
-//         INCLUIR: mensaje genérico "Error interno del servidor"
-//   
-//   AGREGAR: headers de respuesta
-//     - X-Request-Id
-//     - X-Error-Code
-//   
-//   ENVIAR: respuesta JSON con código de estado
-//   
-//   SI no es error operacional:
-//     CONSIDERAR: reiniciar el proceso o alertar
+	if (typeof error === 'object' && error !== null) {
+		const name = String((error as { name?: string }).name ?? '').toLowerCase();
+		const code = String((error as { code?: string }).code ?? '').toLowerCase();
 
-// MIDDLEWARE: notFoundHandler(req, res, next)
-//   CREAR: AppError con mensaje "Ruta no encontrada"
-//   CÓDIGO: 404
-//   LLAMAR: next(error)
+		if (name.includes('validation') || name.includes('syntax')) {
+			return 400;
+		}
+		if (name.includes('auth') || name.includes('unauthorized')) {
+			return 401;
+		}
+		if (name.includes('forbidden') || name.includes('permission')) {
+			return 403;
+		}
+		if (name.includes('notfound') || name.includes('not found')) {
+			return 404;
+		}
+		if (name.includes('timeout') || code === 'etimedout') {
+			return 504;
+		}
+	}
 
-// FUNCIÓN: manejarRechazoPromesas()
-//   ESCUCHAR: evento 'unhandledRejection'
-//     REGISTRAR: error
-//     LANZAR: error para que sea capturado por errorHandler
+	return 500;
+}
 
-// FUNCIÓN: manejarExcepcionesNoCapturadas()
-//   ESCUCHAR: evento 'uncaughtException'
-//     REGISTRAR: error crítico
-//     SALIR: del proceso con código 1
+function esErrorOperacional(error: unknown): boolean {
+	if (typeof error === 'object' && error !== null && 'isOperational' in error) {
+		return Boolean((error as { isOperational?: boolean }).isOperational);
+	}
+	return false;
+}
 
-// EXPORTAR: AppError, errorHandler, notFoundHandler, funciones de manejo
+function registrarError(error: unknown, req: Request): void {
+	const request = req as AuthenticatedRequest;
+	const logPayload = {
+		timestamp: new Date().toISOString(),
+		requestId: request.requestId,
+		method: req.method,
+		path: req.originalUrl,
+		user: request.user?.id,
+		message: error instanceof Error ? error.message : 'Unknown error',
+		stack: error instanceof Error ? error.stack : undefined,
+		headers: {
+			'user-agent': req.headers['user-agent'],
+			'x-forwarded-for': req.headers['x-forwarded-for'],
+		},
+	};
+
+	if (esErrorOperacional(error)) {
+		console.warn('Operational error:', logPayload);
+	} else {
+		console.error('Unhandled error:', logPayload);
+	}
+}
+
+function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction): void {
+	registrarError(error, req);
+
+	const statusCode = determinarCodigoEstado(error);
+	const operational = esErrorOperacional(error);
+	const isDev = (process.env.NODE_ENV ?? 'development') !== 'production';
+
+	const responseBody: Record<string, unknown> = {
+		statusCode,
+		message: operational || isDev
+			? (error instanceof Error ? error.message : 'Error')
+			: 'Error interno del servidor',
+	};
+
+	if (isDev) {
+		responseBody.stack = error instanceof Error ? error.stack : undefined;
+		responseBody.details = (error as { details?: unknown })?.details;
+	}
+
+	const requestId = (req as AuthenticatedRequest).requestId;
+	if (requestId) {
+		res.setHeader('X-Request-Id', requestId);
+	}
+	res.setHeader('X-Error-Code', String(statusCode));
+	res.status(statusCode).json(responseBody);
+}
+
+function notFoundHandler(req: Request, _res: Response, next: NextFunction): void {
+	next(new AppError('Ruta no encontrada', 404, true));
+}
+
+function manejarRechazoPromesas(): void {
+	process.on('unhandledRejection', (reason) => {
+		console.error('Unhandled rejection:', reason);
+		setImmediate(() => {
+			throw reason;
+		});
+	});
+}
+
+function manejarExcepcionesNoCapturadas(): void {
+	process.on('uncaughtException', (error) => {
+		console.error('Uncaught exception:', error);
+		process.exit(1);
+	});
+}
+
+export {
+	AppError,
+	errorHandler,
+	notFoundHandler,
+	determinarCodigoEstado,
+	esErrorOperacional,
+	registrarError,
+	manejarRechazoPromesas,
+	manejarExcepcionesNoCapturadas,
+};

@@ -1,19 +1,18 @@
-interface RouteConfig { // create a interface routing configuration
-    
-    path: String; // Endpoint path
-    target: String; // Endpount target URL
-    methods : String[]; // Allowed HTTP methods
-    requiresAuth: Boolean;
+export interface RouteConfig { // create a interface routing configuration
+    path: string; // Endpoint path
+    target: string; // Endpount target URL
+    methods: string[]; // Allowed HTTP methods
+    requiresAuth: boolean;
     rateLimit: {
-        windowMs: Number; // Time window in milliseconds
-        maxRequests: Number; // Max requests per window
+        windowMs: number; // Time window in milliseconds
+        maxRequests: number; // Max requests per window
     };
 }
 
-interface GatewayConfig { // create a interface gateway configuration
+export interface GatewayConfig { // create a interface gateway configuration
     port: number; // Gateway listening port
     routes: RouteConfig[]; // Array of route configurations
-    timeout:number; // Request timeout in milliseconds
+    timeout: number; // Request timeout in milliseconds
     retries: number; // Number of retry attempts for failed requests
 }
 

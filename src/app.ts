@@ -1,28 +1,46 @@
-// ===================================
-// PUNTO DE ENTRADA PRINCIPAL - app.ts
-// ===================================
+import express, { type Application } from 'express';
+import cors from 'cors';
 
-// IMPORTAR: express, middlewares, configuraciones, servicios
+import gatewayConfig from './config/gateway.js';
+import redisConfig from './config/redis.js';
+import { getRedisService } from './services/redis.service.js';
+import { optionalAuth } from './middlewares/auth.middleware.js';
+import { rateLimitMiddleware } from './middlewares/rate-limit.middleware.js';
+import { proxyMiddleware } from './proxy/reverse-proxy.js';
+import { errorHandler, manejarExcepcionesNoCapturadas, manejarRechazoPromesas, notFoundHandler } from './middlewares/error.handler.js';
 
-// FUNCIÓN: inicializarApp()
-//   CREAR: instancia de Express
-//   CONFIGURAR: middleware de JSON
-//   CONFIGURAR: middleware de CORS
-//   CONFIGURAR: middleware de autenticación
-//   CONFIGURAR: middleware de rate limiting
-//   CONFIGURAR: reverse proxy handler
-//   CONFIGURAR: error handler (debe ser el último)
-//   RETORNAR: instancia de app
+function inicializarApp(): Application {
+	const app = express();
 
-// FUNCIÓN: iniciarServidor()
-//   INTENTAR:
-//     CONECTAR: a Redis
-//     INICIALIZAR: aplicación
-//     INICIAR: servidor en puerto configurado
-//     MOSTRAR: mensaje de éxito
-//   CAPTURAR_ERROR:
-//     MOSTRAR: error y salir del proceso
+	app.use(express.json({ limit: '1mb' }));
+	app.use(cors());
+	app.use(optionalAuth);
+	app.use(rateLimitMiddleware);
+	app.use(proxyMiddleware);
+	app.use(notFoundHandler);
+	app.use(errorHandler);
 
-// EJECUTAR: iniciarServidor()
+	return app;
+}
+
+async function iniciarServidor(): Promise<void> {
+	try {
+		manejarRechazoPromesas();
+		manejarExcepcionesNoCapturadas();
+
+		const redisService = getRedisService(redisConfig);
+		await redisService.connect();
+
+		const app = inicializarApp();
+		app.listen(gatewayConfig.port, () => {
+			console.log(`Nexus Gateway escuchando en puerto ${gatewayConfig.port}`);
+		});
+	} catch (error) {
+		console.error('Error al iniciar el servidor:', error);
+		process.exit(1);
+	}
+}
+
+iniciarServidor();
 
 

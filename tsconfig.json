@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    /* Opciones del Proyecto */
+    "target": "ES2020",
+    "module": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    /* Chequeo de Tipos Estricto */
+    "strict": true,
+    "noImplicitAny": true,
+
+    /* Opciones de Resolución de Módulos */
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+
+    /* Opciones Avanzadas */
+    "skipLibCheck": true,                         // Omite el chequeo de tipos de los archivos de declaración
+    "forceConsistentCasingInFileNames": true      // No permite referencias al mismo archivo con diferentes mayúsculas/minúsculas
+  },
+  "include": [
+    "src/**/*"                                    // Incluye todos los archivos dentro de la carpeta 'src'
+  ],
+  "exclude": [
+    "node_modules",                               // Excluye la carpeta 'node_modules'
+    "**/*.test.ts"                                // Excluye los archivos de prueba
+  ]
+}
