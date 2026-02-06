@@ -95,7 +95,7 @@ Consulta `.env.example` para ver todas las variables disponibles (`GATEWAY_TIMEO
 ### 2) Levanta el gateway con Docker
 
 ```bash
-docker compose up --build
+sudo docker compose up --build
 ```
 
 ### 3) Verifica el health check
@@ -220,7 +220,7 @@ See `.env.example` for all available variables (`GATEWAY_TIMEOUT`, `GATEWAY_RETR
 ### 2) Start the gateway with Docker
 
 ```bash
-docker compose up --build
+sudo docker compose up --build
 ```
 
 ### 3) Verify the health check
