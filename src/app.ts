@@ -14,6 +14,18 @@ function inicializarApp(): Application {
 
 	app.use(express.json({ limit: '1mb' }));
 	app.use(cors());
+
+	// Health check endpoint (no auth, no rate limit)
+	app.get('/health', async (_req, res) => {
+		try {
+			const redisService = getRedisService();
+			await redisService.ping();
+			res.status(200).json({ status: 'ok', redis: 'connected', timestamp: new Date().toISOString() });
+		} catch {
+			res.status(503).json({ status: 'degraded', redis: 'disconnected', timestamp: new Date().toISOString() });
+		}
+	});
+
 	app.use(optionalAuth);
 	app.use(rateLimitMiddleware);
 	app.use(proxyMiddleware);
@@ -43,4 +55,5 @@ async function iniciarServidor(): Promise<void> {
 
 iniciarServidor();
 
+export { inicializarApp };
 

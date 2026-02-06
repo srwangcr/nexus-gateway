@@ -1,15 +1,10 @@
 import { Redis } from 'ioredis';
+
 interface RedisConfig {
     host: string;
     port: number;
     password?: string;
     db?: number;
-}
-
-interface Logger {
-    log: (message: string, ...args: unknown[]) => void;
-    error: (message: string, ...args: unknown[]) => void;
-    warn: (message: string, ...args: unknown[]) => void;
 }
 
 class RedisService {
@@ -225,9 +220,9 @@ function getRedisService(config?: RedisConfig): RedisService {
     }
     return redisServiceInstance;
 }
-function resetRedisService(): void {
+async function resetRedisService(): Promise<void> {
     if (redisServiceInstance) {
-        redisServiceInstance.disconnect();
+        await redisServiceInstance.disconnect();
     }
     redisServiceInstance = null;
 }

@@ -16,10 +16,10 @@ export interface GatewayConfig { // create a interface gateway configuration
     retries: number; // Number of retry attempts for failed requests
 }
 
-const gatewayConfig: GatewayConfig = { // create a gateway configuration object
-    port: Number(process.env.GATEWAY_PORT) ?? 3000, // Default to port 3000 if not specified
-    timeout: Number(process.env.GATEWAY_TIMEOUT) ?? 30000, // Default to 30 seconds
-    retries: Number(process.env.GATEWAY_RETRIES) ?? 3, // Default to 3 retries
+const gatewayConfig: GatewayConfig = {
+    port: Number(process.env.GATEWAY_PORT) || 3000,
+    timeout: Number(process.env.GATEWAY_TIMEOUT) || 30000,
+    retries: Number(process.env.GATEWAY_RETRIES) || 3,
     routes: [ // Define route configurations
         {
             path: '/api/users', // Users service endpoint

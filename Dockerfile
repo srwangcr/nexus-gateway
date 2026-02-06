@@ -33,5 +33,9 @@ ENV NODE_ENV=production
 ENV GATEWAY_PORT=3000
 ENV REDIS_HOST=redis
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
 # Comando para iniciar la aplicación
 CMD [ "npm", "start" ]
