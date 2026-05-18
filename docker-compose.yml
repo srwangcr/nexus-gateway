@@ -27,6 +27,13 @@ services:
     networks:
       - nexus-net
 
+  users-service:
+    image: node:18-alpine
+    container_name: users-service
+    command: sh -c "npm init -y && npm install express && node -e \"const express = require('express'); const app = express(); app.get('/api/users', (req, res) => res.json({ok:true, users:[]})); app.listen(3001);\""
+    networks:
+      - nexus-net
+
 networks:
   nexus-net:
     driver: bridge
