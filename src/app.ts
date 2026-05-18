@@ -45,7 +45,7 @@ async function iniciarServidor(): Promise<void> {
 
 		const app = inicializarApp();
 		app.listen(gatewayConfig.port, () => {
-			console.log(`Nexus Gateway escuchando en puerto ${gatewayConfig.port}`);
+			console.log(`Nexus Gateway listening on port ${gatewayConfig.port}`);
 		});
 	} catch (error) {
 		console.error('Error al iniciar el servidor:', error);

@@ -97,18 +97,18 @@ class ReverseProxy {
 		}
 
 		if (error.code === 'ECONNREFUSED') {
-			res.status(503).json({ message: 'Servicio no disponible' });
+			res.status(503).json({ message: 'Service unavailable' });
 			return;
 		}
 		if (error.code === 'ETIMEDOUT') {
-			res.status(504).json({ message: 'Timeout al conectar con el servicio' });
+			res.status(504).json({ message: 'Service connection timeout' });
 			return;
 		}
 		if (error.code === 'ECONNRESET') {
-			res.status(502).json({ message: 'Conexion interrumpida con el servicio' });
+			res.status(502).json({ message: 'Service connection interrupted' });
 			return;
 		}
-		res.status(500).json({ message: 'Error en el proxy' });
+		res.status(500).json({ message: 'Proxy error' });
 	}
 
 	public manejarRespuestaProxy(
@@ -148,7 +148,7 @@ async function proxyMiddleware(req: Request, res: Response, next: NextFunction):
 
 	const request = req as AuthenticatedRequest;
 	if (routeConfig.requiresAuth && !request.user) {
-		res.status(401).json({ message: 'Token de autenticacion requerido' });
+		res.status(401).json({ message: 'Authentication token is required' });
 		return;
 	}
 
@@ -214,7 +214,7 @@ function crearProxyRouter(config: GatewayConfig): Router {
 
 		const request = req as AuthenticatedRequest;
 		if (routeConfig.requiresAuth && !request.user) {
-			res.status(401).json({ message: 'Token de autenticacion requerido' });
+			res.status(401).json({ message: 'Authentication token is required' });
 			return;
 		}
 

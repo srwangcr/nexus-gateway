@@ -86,11 +86,7 @@ function errorHandler(error: unknown, req: Request, res: Response, _next: NextFu
 		statusCode,
 		message: operational || isDev
 			? (error instanceof Error ? error.message : 'Error')
-			: 'Error interno del servidor',
-	};
-
-	if (isDev) {
-		responseBody.stack = error instanceof Error ? error.stack : undefined;
+				: 'Internal server error',
 		responseBody.details = (error as { details?: unknown })?.details;
 	}
 
@@ -103,7 +99,7 @@ function errorHandler(error: unknown, req: Request, res: Response, _next: NextFu
 }
 
 function notFoundHandler(req: Request, _res: Response, next: NextFunction): void {
-	next(new AppError('Ruta no encontrada', 404, true));
+	next(new AppError('Route not found', 404, true));
 }
 
 function manejarRechazoPromesas(): void {

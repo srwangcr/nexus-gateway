@@ -123,7 +123,7 @@ function crearRateLimiter(config: RateLimitConfig) {
 			if (failOpen) {
 				next();
 			} else {
-				res.status(503).json({ message: 'Servicio no disponible' });
+				res.status(503).json({ message: 'Service unavailable' });
 			}
 		}
 	};
@@ -132,7 +132,7 @@ function crearRateLimiter(config: RateLimitConfig) {
 const rateLimitMiddleware = crearRateLimiter({
 	windowMs: 15 * 60 * 1000,
 	maxRequests: 100,
-	message: 'Demasiadas solicitudes, intenta mas tarde',
+	message: 'Too many requests, try again later',
 	skipSuccessfulRequests: false,
 	skipFailedRequests: false,
 });
@@ -141,7 +141,7 @@ function rateLimitPorRuta(maxRequests: number, windowMs: number) {
 	return crearRateLimiter({
 		windowMs,
 		maxRequests,
-		message: 'Demasiadas solicitudes, intenta mas tarde',
+		message: 'Too many requests, try again later',
 		skipSuccessfulRequests: false,
 		skipFailedRequests: false,
 	});
@@ -151,7 +151,7 @@ function rateLimitEstricto() {
 	return crearRateLimiter({
 		windowMs: 60 * 1000,
 		maxRequests: 10,
-		message: 'Limite de rate estricto excedido',
+		message: 'Strict rate limit exceeded',
 		skipSuccessfulRequests: false,
 		skipFailedRequests: false,
 	});
