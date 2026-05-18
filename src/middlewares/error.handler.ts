@@ -86,8 +86,12 @@ function errorHandler(error: unknown, req: Request, res: Response, _next: NextFu
 		statusCode,
 		message: operational || isDev
 			? (error instanceof Error ? error.message : 'Error')
-				: 'Internal server error',
-		responseBody.details = (error as { details?: unknown })?.details;
+			: 'Internal server error',
+	};
+
+	if (isDev) {
+		(responseBody as any).stack = error instanceof Error ? error.stack : undefined;
+		(responseBody as any).details = (error as { details?: unknown })?.details;
 	}
 
 	const requestId = (req as AuthenticatedRequest).requestId;
