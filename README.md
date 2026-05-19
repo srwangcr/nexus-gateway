@@ -90,6 +90,60 @@ npm run build
 
 ---
 
+
+---
+
+## 📊 Benchmarks & Performance Tests
+
+Stress and performance tests were executed using **Autocannon** from an external host machine targeting the Gateway deployed inside an isolated container within a local **Proxmox Virtual Environment (PVE)**.
+
+### 🔌 Test Environment
+- **Server (Proxmox LXC):** Debian 12 (Variable Cores / 2 GiB RAM)
+- **Infrastructure:** Docker Compose (Gateway, Redis 7-alpine, Users-Service)
+- **Payload:** Protected `/api/users` endpoint intercepted by JWT cryptographic signature validation middleware (`jsonwebtoken`).
+- **Network Injection:** Direct TCP sockets over local static routing via `vmbr0` bridge.
+
+---
+
+### 📈 Scaling History & Results
+
+#### 🛑 Phase 1: Single-Thread Saturation (Resource Starvation)
+- **LXC Configuration:** 1 Core vCPU, 512 MiB RAM.
+- **Command:** `autocannon -c 100 -d 10`
+- **Behavior:** Lacking parallel compute resources, the single-threaded Node.js event loop pinned at 100% CPU attempting to calculate token signatures. The container's network stack exhausted file descriptors, causing immediate connection rejections.
+- **Result:** Complete drop to 0 RPS with mixed failures (`401`/`502` or connection timeouts).
+
+#### 🛡️ Phase 2: Controlled Concurrency (Stable Sweet Spot)
+- **LXC Configuration:** Scaled to **4 Cores vCPU**, 2 GiB RAM.
+- **Command:** `autocannon -c 40 -d 10`
+- **Metrics:**
+  - **Average RPS:** 312.4 Req/Sec
+  - **Mean Latency:** 127.42 ms
+  - **Errors (Non-2xx):** 0
+- **Behavior:** 100% flawless stability. The `nexus-gateway` container hovered predictably between 46% and 56% CPU usage, the underlying microservice processed comfortably at 17%, and Redis remained flat at 1.8%. Upon completion, CPU dropped instantly to 0.00% with no leaking sockets.
+
+#### 🚀 Phase 3: High Sustained Throughput
+- **LXC Configuration:** 4 Cores vCPU, 2 GiB RAM.
+- **Command:** `autocannon -c 60 -d 10`
+- **Metrics:**
+  - **Average RPS:** 559.8 Req/Sec
+  - **Mean Latency:** 177.34 ms
+  - **Errors (Non-2xx):** 0
+- **Behavior:** Real transfer throughput doubled. The Gateway cleanly scaled up to **151.72% CPU**, leveraging Node's internal `libuv` network threads spread across the additional cores provided by Proxmox. The backend users-service scaled up to 41% CPU to handle the load.
+
+#### 🔥 Phase 4: Maximum Cryptographic Ceiling (Lab Record)
+- **LXC Configuration:** 4 Cores vCPU, 2 GiB RAM.
+- **Command:** `autocannon -c 85 -d 10`
+- **Metrics:**
+  - **Average RPS:** **748.4 Req/Sec**
+  - **Max Peak Throughput:** **1,114 Req/Sec**
+  - **Total Processed Requests (10s):** ~7,500 successful hits.
+  - **Mean Latency:** 111.45 ms *(99th Percentile: 683 ms)*
+  - **Errors (Non-2xx):** 0
+- **Behavior:** Massive load testing at the sheer limit of a single-instance node application. The Gateway pinned at a peak of **172.93% CPU**, while the users-service handled the proxied traffic smoothly at 51.81% CPU. The increase in maximum latency (~1.3s) highlighted the physical cryptographic overhead of synchronous signature checks under compounding concurrent requests. However, the container kernel gracefully processed all socket backlogs with zero packet drops.
+
+---
+
 ## 🛠️ Technologies
 
 | Category | Technology |
