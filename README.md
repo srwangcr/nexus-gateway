@@ -13,10 +13,11 @@
 
 **Nexus Gateway** es un API Gateway ligero y extensible construido con Node.js y TypeScript. Actúa como punto de entrada único para microservicios, proporcionando:
 
-- 🔐 **Autenticación JWT** — Validación de tokens y control de acceso
-- ⚡ **Rate Limiting** — Control de tráfico con algoritmos Token Bucket y Sliding Window
+- 🔐 **Autenticación JWT** — Validación de tokens y control de acceso con cache de validación en Redis
+- ⚡ **Rate Limiting** — Control de tráfico con `express-rate-limit` y `rate-limit-redis`
 - 🔄 **Reverse Proxy** — Enrutamiento inteligente a servicios backend con reintentos y backoff exponencial
-- 📊 **Redis Integration** — Almacenamiento de sesiones y contadores de rate limit
+- 📊 **Redis Integration** — Cache de validaciones JWT, contadores de rate limit y almacenamiento compartido
+- 🚀 **PM2 Cluster** — Ejecución del gateway por núcleo disponible dentro del contenedor
 - 🛡️ **Manejo de Errores** — Respuestas consistentes y logging centralizado
 - 💚 **Health Check** — Endpoint `/health` para monitoreo y Docker `HEALTHCHECK`
 
@@ -56,9 +57,9 @@ nexus-gateway/
 │   │   └── interfaces/
 │   │       └── request.interface.ts  # Tipos e interfaces TypeScript
 │   ├── middlewares/
-│   │   ├── auth.middleware.ts        # Autenticación y autorización
-│   │   ├── error.handler.ts         # Manejo centralizado de errores
-│   │   └── rate-limit.middleware.ts  # Middleware de rate limiting
+│   │   ├── auth.middleware.ts        # Autenticación, autorización y cache JWT
+│   │   ├── error.handler.ts          # Manejo centralizado de errores
+│   │   └── rate-limit.middleware.ts  # Rate limiting con Redis
 │   ├── proxy/
 │   │   └── reverse-proxy.ts         # Lógica del reverse proxy
 │   └── services/
@@ -98,6 +99,8 @@ Consulta `.env.example` para ver todas las variables disponibles (`GATEWAY_TIMEO
 sudo docker compose up --build
 ```
 
+El contenedor del gateway arranca con PM2 en modo cluster, por lo que aprovecha los cores disponibles del host/LXC.
+
 ### 3) Verifica el health check
 
 ```bash
@@ -133,6 +136,12 @@ Notas:
 npm test
 ```
 
+### 7) Build local
+
+```bash
+npm run build
+```
+
 ---
 
 ## 🛠️ Tecnologías
@@ -145,6 +154,8 @@ npm test
 | Cache/Store | Redis (ioredis) |
 | Proxy | http-proxy |
 | Auth | jsonwebtoken |
+| Rate Limit | express-rate-limit + rate-limit-redis |
+| Process Manager | PM2 |
 | Contenedores | Docker & Docker Compose |
 
 ---
@@ -155,12 +166,14 @@ npm test
 
 - 🎉 Release inicial
 - 🔐 Autenticación JWT con middleware obligatorio y opcional
-- ⚡ Rate limiting basado en Redis con sliding window
+- 🔐 Cache de validación JWT en Redis para evitar verificar la firma en cada request
+- ⚡ Rate limiting de entrada con `express-rate-limit` y store Redis
 - 🔄 Reverse proxy con reintentos y backoff exponencial
 - 📊 Servicio Redis singleton con reconexión automática
 - 🛡️ Manejo centralizado de errores con `AppError`
 - 💚 Endpoint `/health` para monitoreo
 - 🐳 Docker y Docker Compose listos para producción con `HEALTHCHECK`
+- 🚀 PM2 en modo cluster dentro del contenedor del gateway
 - ✅ Tests unitarios y de integración
 
 ---
@@ -192,10 +205,11 @@ Las contribuciones, issues y feature requests son bienvenidos. Abre un issue o e
 
 **Nexus Gateway** is a lightweight and extensible API Gateway built with Node.js and TypeScript. It acts as a single entry point for microservices, providing:
 
-- 🔐 **JWT Authentication** — Token validation and access control
-- ⚡ **Rate Limiting** — Traffic control with Token Bucket and Sliding Window algorithms
+- 🔐 **JWT Authentication** — Token validation and access control with validation caching in Redis
+- ⚡ **Rate Limiting** — Traffic control with `express-rate-limit` and `rate-limit-redis`
 - 🔄 **Reverse Proxy** — Smart routing to backend services with retries and exponential backoff
-- 📊 **Redis Integration** — Session and rate-limit counters storage
+- 📊 **Redis Integration** — JWT validation cache, rate-limit counters and shared storage
+- 🚀 **PM2 Cluster** — Gateway processes scale with available cores inside the container
 - 🛡️ **Error Handling** — Consistent responses and centralized logging
 - 💚 **Health Check** — `/health` endpoint for monitoring and Docker `HEALTHCHECK`
 
@@ -222,6 +236,8 @@ See `.env.example` for all available variables (`GATEWAY_TIMEOUT`, `GATEWAY_RETR
 ```bash
 sudo docker compose up --build
 ```
+
+The gateway container starts with PM2 in cluster mode, so it can use the available cores on the host/LXC.
 
 ### 3) Verify the health check
 
@@ -258,6 +274,12 @@ Notes:
 npm test
 ```
 
+### 7) Build locally
+
+```bash
+npm run build
+```
+
 ---
 
 ## 🛠️ Technologies
@@ -270,6 +292,8 @@ npm test
 | Cache/Store | Redis (ioredis) |
 | Proxy | http-proxy |
 | Auth | jsonwebtoken |
+| Rate Limit | express-rate-limit + rate-limit-redis |
+| Process Manager | PM2 |
 | Containers | Docker & Docker Compose |
 
 ---
@@ -280,12 +304,14 @@ npm test
 
 - 🎉 Initial release
 - 🔐 JWT authentication with required and optional middlewares
-- ⚡ Redis-based rate limiting with sliding window
+- 🔐 JWT validation cache in Redis to avoid signature verification on every request
+- ⚡ Entry-point rate limiting with `express-rate-limit` and Redis store
 - 🔄 Reverse proxy with retries and exponential backoff
 - 📊 Singleton Redis service with automatic reconnection
 - 🛡️ Centralized error handling with `AppError`
 - 💚 `/health` endpoint for monitoring
 - 🐳 Production-ready Docker and Docker Compose with `HEALTHCHECK`
+- 🚀 PM2 cluster mode inside the gateway container
 - ✅ Unit and integration tests
 
 ---
