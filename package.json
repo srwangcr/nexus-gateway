@@ -7,9 +7,12 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "http-proxy": "^1.18.1",
     "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.3",
+    "pm2": "^7.0.1",
+    "rate-limit-redis": "^5.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

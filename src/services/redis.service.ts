@@ -206,7 +206,17 @@ class RedisService {
         } catch (error) {
             this.handleError('pinging Redis', error);
         }
-    }    
+    }
+
+    public getClient(): Redis {
+        this.ensureConnected();
+
+        if (!this.client) {
+            throw new Error('Redis is not connected');
+        }
+
+        return this.client;
+    }
 }
 
 let redisServiceInstance: RedisService | null = null;

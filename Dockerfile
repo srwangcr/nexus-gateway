@@ -4,8 +4,8 @@ FROM node:18 AS builder
 WORKDIR /usr/src/app
 
 # Instalar dependencias
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copiar el código fuente
 COPY . .
@@ -19,8 +19,8 @@ FROM node:18-alpine
 WORKDIR /usr/src/app
 
 # Copiar solo las dependencias de producción
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Copiar los archivos compilados desde la etapa de build
 COPY --from=builder /usr/src/app/dist ./dist
@@ -38,4 +38,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Comando para iniciar la aplicación
-CMD [ "npm", "start" ]
+CMD ["npx", "pm2-runtime", "dist/app.js", "-i", "max", "--name", "nexus-gateway"]
